@@ -59,78 +59,7 @@ class ModelModifier:
                 weight_types.add(weight_type)
         return list(weight_types)
 
-    def interactive_select_weights(self):
-        try:
-            # Check if we're in a Jupyter environment
-            get_ipython()
-            is_jupyter = True
-        except:
-            is_jupyter = False
-
-        weight_types = self.get_weight_types()
-        sorted_weight_types = self.sort_weight_types(weight_types)
-
-        if is_jupyter:
-            # Interactive Jupyter widget implementation
-            checkboxes = {wt: widgets.Checkbox(
-                value=True,
-                description=wt,
-                disabled=False
-            ) for wt in sorted_weight_types}
-            
-            checkbox_container = widgets.VBox(list(checkboxes.values()))
-            output = widgets.Output()
-            confirm_button = widgets.Button(description='Confirm Selection')
-            
-            from threading import Event
-            selection_event = Event()
-            selected_types = []
-            
-            @output.capture()
-            def on_button_clicked(b):
-                nonlocal selected_types
-                selected_types = [wt for wt, cb in checkboxes.items() if cb.value]
-                print(f"Selected {len(selected_types)} weight types")
-                self.layer_types = selected_types
-                selection_event.set()
-            
-            confirm_button.on_click(on_button_clicked)
-            
-            display(widgets.Label('Select weight types to analyze:'))
-            display(checkbox_container)
-            display(confirm_button)
-            display(output)
-            
-            selection_event.wait()
-            return self.layer_types
-        else:
-            # Command-line fallback implementation
-            print("\nAvailable weight types:")
-            for i, wt in enumerate(sorted_weight_types, 1):
-                print(f"{i}. {wt}")
-            
-            print("\nEnter the numbers of weight types you want to analyze (comma-separated)")
-            print("Press Enter to select all, or input numbers like '1,2,3'")
-            
-            selection = input("Selection: ").strip()
-            
-            if selection == "":
-                selected_types = sorted_weight_types
-            else:
-                try:
-                    indices = [int(x.strip()) - 1 for x in selection.split(",")]
-                    selected_types = [sorted_weight_types[i] for i in indices if 0 <= i < len(sorted_weight_types)]
-                except:
-                    print("Invalid input. Selecting all types.")
-                    selected_types = sorted_weight_types
-            
-            print(f"\nSelected {len(selected_types)} weight types:")
-            for st in selected_types:
-                print(f"- {st}")
-            
-            self.layer_types = selected_types
-            return selected_types
-
+    
     def sort_weight_types(self, weight_types):
         categories = {}
         for wt in weight_types:
@@ -290,7 +219,7 @@ class ModelModifier:
             print("Please install matplotlib and seaborn to visualize results")
 
 
-def analyze_model(model_name, top_percent=50, batch_size=32):
+def analyze_model(model_name, top_percent=50, batch_size=32, weight_to_snr=None):
     """
     Notebook-friendly function to analyze a model's SNR
     """
@@ -311,13 +240,19 @@ def analyze_model(model_name, top_percent=50, batch_size=32):
         modifier = ModelModifier(model_name=model_name, batch_size=batch_size)
         
         # Get weight types
-        weight_types = modifier.get_weight_types()
-        print(f"Found {len(weight_types)} weight types")
+        all_weight_types = modifier.get_weight_types()
+        print(f"Found {len(all_weight_types)} weight types")
         
-        # Interactive selection
-        selected_weight_types = modifier.interactive_select_weights()
+        # Check if weight_to_snr is provided
+        if weight_to_snr:
+            if isinstance(weight_to_snr, str):
+                selected_weight_types = [weight_to_snr] if weight_to_snr in all_weight_types else []
+            else:
+                selected_weight_types = [wt for wt in weight_to_snr if wt in all_weight_types]
+        else:
+            selected_weight_types = all_weight_types
         
-        if selected_weight_types and len(selected_weight_types) > 0:
+        if selected_weight_types:
             modifier.assess_layers_snr(selected_weight_types)
             modifier.save_snr_to_json()
             
@@ -325,6 +260,6 @@ def analyze_model(model_name, top_percent=50, batch_size=32):
             modifier.visualize_snr_distribution()
             print("Finished SNR scanning and data saved.")
         else:
-            print("No weight types selected. Please run again and select some weight types.")
+            print("No valid weight types selected. Please provide valid weight types.")
             
     return modifier
