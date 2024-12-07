@@ -5,9 +5,9 @@ import numpy as np
 import json
 from prompt_toolkit.shortcuts import checkboxlist_dialog, input_dialog
 import argparse
-from tqdm import tqdm
 import os
 import time
+from tqdm.auto import tqdm
 
 class ModelModifier:
     def __init__(self, model_name=None, top_percent=50, batch_size=1):
@@ -219,7 +219,8 @@ def main():
         modifier.generate_unfrozen_params_yaml(snr_file_path, args.top_percent)
     else:
         print(f"No existing SNR results file found for {args.model_name}. Proceeding with SNR calculation.")
-        batch_size = input_dialog(title="Batch Size", text="Enter the batch size:").run()
+        #batch_size = input_dialog(title="Batch Size", text="Enter the batch size:").run()
+        batch_size = os.getenv("BATCH_SIZE", "32") 
         batch_size = int(batch_size) if batch_size else 1
         modifier = ModelModifier(model_name=args.model_name, batch_size=batch_size)
         selected_weight_types = modifier.interactive_select_weights()
