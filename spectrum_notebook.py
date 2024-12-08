@@ -294,13 +294,12 @@ def get_spectrum(model, top_percent=50, batch_size=1, weight_to_snr=None):
         weight_to_snr: List of weight types to analyze
     """
     modifier = ModelModifier(model=model, top_percent=top_percent, batch_size=batch_size)    
-    model_name = model.config._name_or_path
     if weight_to_snr:
         modifier.assess_layers_snr(weight_to_snr)
         modifier.save_snr_to_json()
     
     # Get model name slug for file paths
-    model_name_slug = model_name.replace('/', '-').replace('_', '-')
+    model_name_slug = modifier.model_name.replace('/', '-').replace('_', '-')
     yaml_file = f"snr_results_{model_name_slug}_unfrozenparameters_{top_percent}percent.yaml"
     
     # Print total parameters before freezing
