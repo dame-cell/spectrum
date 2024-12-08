@@ -63,6 +63,12 @@ class ModelModifier:
                     try:
                         # Keep computation on GPU but use efficient memory management
                         weights = module.weight.detach()
+                        
+                        # Convert to float32 if in half precision
+                        original_dtype = weights.dtype
+                        if original_dtype in [torch.float16, torch.bfloat16]:
+                            weights = weights.to(torch.float32)
+                            
                         if weights.ndim < 2:
                             weights = weights.unsqueeze(0)
                             
@@ -88,8 +94,8 @@ class ModelModifier:
                     except RuntimeError as e:
                         print(f"\nWarning: Error processing layer {name}: {str(e)}")
                         try:
-                            # Fallback to CPU only if GPU fails
-                            weights = module.weight.detach().cpu()
+                            # Fallback to CPU with float32
+                            weights = module.weight.detach().cpu().to(torch.float32)
                             S = torch.linalg.svdvals(weights)
                             max_singular_value = S[0]
                             sigma_estimated = self.estimate_sigma_with_full_iqr(S)
@@ -108,6 +114,7 @@ class ModelModifier:
                             continue
                             
                 progress_bar.update(1)
+
 
     @staticmethod
     def marchenko_pastur_threshold(sigma, n, m):
