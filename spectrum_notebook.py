@@ -294,6 +294,7 @@ def get_spectrum(model, top_percent=50, batch_size=1, weight_to_snr=None):
         weight_to_snr: List of weight types to analyze
     """
     modifier = ModelModifier(model=model, top_percent=top_percent, batch_size=batch_size)    
+    model_name = model.config._name_or_path
     if weight_to_snr:
         modifier.assess_layers_snr(weight_to_snr)
         modifier.save_snr_to_json()
