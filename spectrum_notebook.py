@@ -333,8 +333,6 @@ def get_spectrum(model, top_percent=50, batch_size=1, weight_to_snr=None):
         for name, param in model.named_parameters():
             if any(re.match(unfrozen_param, name) for unfrozen_param in unfrozen_parameters):
                 param.requires_grad = True
-                if param.dtype == torch.float16:
-                    param.register_hook(lambda grad: grad.to(torch.float16)) 
                 unfrozen_count += param.numel()
                 
         print(f"\nSpectrum Freezing Results:")
@@ -342,10 +340,7 @@ def get_spectrum(model, top_percent=50, batch_size=1, weight_to_snr=None):
         print(f"├── Frozen (non-trainable): {(total_params - unfrozen_count):,} ({100 * (total_params - unfrozen_count) / total_params:.2f}%)")
         print(f"└── Unfrozen (trainable): {unfrozen_count:,} ({100 * unfrozen_count / total_params:.2f}%)")
         
-        print(f"\nUnfrozen Layers (trainable during fine-tuning):")
-        for name, param in model.named_parameters():
-            if param.requires_grad:
-                print(f"- {name}: {param.numel():,} parameters")
+    
                 
     except FileNotFoundError:
         print(f"Warning: YAML file {yaml_file} not found. Model parameters remain unchanged.")
