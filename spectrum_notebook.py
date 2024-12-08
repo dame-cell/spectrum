@@ -7,6 +7,7 @@ import time
 from tqdm.auto import tqdm
 import ipywidgets as widgets
 from IPython.display import display
+import re 
 
 class ModelModifier:
     def __init__(self, model_name=None, top_percent=50, batch_size=1):
@@ -310,9 +311,13 @@ def get_spectrum(model, top_percent=50, batch_size=1, weight_to_snr=None):
         batch_size: Batch size for analysis
         weight_to_snr: List of weight types to analyze
     """
+    import copy
+    
     # Get model name from config
     model_name = model.config._name_or_path
     modifier = ModelModifier(model_name=model_name, top_percent=top_percent, batch_size=batch_size)
+    
+    # Instead of creating a new model, use the existing one
     modifier.model = model
     
     if weight_to_snr:
@@ -325,7 +330,8 @@ def get_spectrum(model, top_percent=50, batch_size=1, weight_to_snr=None):
     
     # Print total parameters before freezing
     total_params = sum(p.numel() for p in model.parameters())
-    print(f"\nTotal parameters in model: {total_params:,}")
+    print(f"\nModel Parameter Analysis:")
+    print(f"Total Parameters: {total_params:,}")
     
     try:
         with open(yaml_file, "r") as fin:
@@ -341,24 +347,22 @@ def get_spectrum(model, top_percent=50, batch_size=1, weight_to_snr=None):
         for param in model.parameters():
             param.requires_grad = False
             
-        # Unfreeze Spectrum parameters
+        # Unfreeze Spectrum parameters and count
         unfrozen_count = 0
-        total_params = 0
         for name, param in model.named_parameters():
-            total_params += param.numel()
             if any(re.match(unfrozen_param, name) for unfrozen_param in unfrozen_parameters):
                 param.requires_grad = True
                 unfrozen_count += param.numel()
                 
-        print(f"\nSpectrum Analysis Results:")
-        print(f"Total Parameters: {total_params:,}")
-        print(f"Frozen Parameters: {(total_params - unfrozen_count):,} ({100 * (total_params - unfrozen_count) / total_params:.2f}%)")
-        print(f"Unfrozen Parameters: {unfrozen_count:,} ({100 * unfrozen_count / total_params:.2f}%)")
-        print(f"\nUnfrozen layers based on top {top_percent}% SNR:")
-        for name, param in loaded_model.named_parameters():
+        print(f"\nSpectrum Freezing Results:")
+        print(f"Total Parameters (unchanged): {total_params:,}")
+        print(f"├── Frozen (non-trainable): {(total_params - unfrozen_count):,} ({100 * (total_params - unfrozen_count) / total_params:.2f}%)")
+        print(f"└── Unfrozen (trainable): {unfrozen_count:,} ({100 * unfrozen_count / total_params:.2f}%)")
+        
+        print(f"\nUnfrozen Layers (trainable during fine-tuning):")
+        for name, param in model.named_parameters():
             if param.requires_grad:
-            print(name, param.requires_grad)
-
+                print(f"- {name}: {param.numel():,} parameters")
                 
     except FileNotFoundError:
         print(f"Warning: YAML file {yaml_file} not found. Model parameters remain unchanged.")
