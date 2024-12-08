@@ -297,4 +297,47 @@ def analyze_model(model_name, top_percent=50, batch_size=1, weight_to_snr=None):
             print("No valid weight types selected. Please provide valid weight types.")
             
     return modifier
+    
+import re
+def get_spectrum(model_name, top_percent=50, batch_size=1, weight_to_snr=None):
+    """
+    Analyze model and apply Spectrum freezing/unfreezing based on SNR analysis
+    Returns the modified model with frozen/unfrozen parameters
+    """
+    # Run analysis
+    modifier = analyze_model(model_name, top_percent, batch_size, weight_to_snr)
+    
+    # Get the model from the modifier
+    model = modifier.model
+    
+    # Check if there is yaml file 
+    model_name_slug = model_name.replace('/', '-').replace('_', '-')
+    yaml_file = f"snr_results_{model_name_slug}_unfrozenparameters_{top_percent}percent.yaml"
+    
+    try:
+        with open(yaml_file, "r") as fin:
+            yaml_parameters = fin.read()
 
+        # Extract unfrozen parameters
+        unfrozen_parameters = []
+        for line in yaml_parameters.splitlines():
+            if line.startswith("- "):
+                unfrozen_parameters.append(line.split("- ")[1])
+
+        # Freeze all parameters first
+        for param in model.parameters():
+            param.requires_grad = False
+            
+        # Unfreeze Spectrum parameters
+        for name, param in model.named_parameters():
+            if any(re.match(unfrozen_param, name) for unfrozen_param in unfrozen_parameters):
+                param.requires_grad = True
+                
+        print(f"Applied Spectrum: Froze all parameters and unfroze top {top_percent}% SNR layers")
+        
+    except FileNotFoundError:
+        print(f"Warning: YAML file {yaml_file} not found. Model parameters remain unchanged.")
+    except Exception as e:
+        print(f"Warning: Error applying Spectrum: {str(e)}. Model parameters remain unchanged.")
+    
+    return model
