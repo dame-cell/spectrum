@@ -355,9 +355,10 @@ def get_spectrum(model, top_percent=50, batch_size=1, weight_to_snr=None):
         print(f"Frozen Parameters: {(total_params - unfrozen_count):,} ({100 * (total_params - unfrozen_count) / total_params:.2f}%)")
         print(f"Unfrozen Parameters: {unfrozen_count:,} ({100 * unfrozen_count / total_params:.2f}%)")
         print(f"\nUnfrozen layers based on top {top_percent}% SNR:")
-        for name, param in model.named_parameters():
+        for name, param in loaded_model.named_parameters():
             if param.requires_grad:
-                print(f"- {name}: {param.numel():,} parameters")
+            print(name, param.requires_grad)
+
                 
     except FileNotFoundError:
         print(f"Warning: YAML file {yaml_file} not found. Model parameters remain unchanged.")
