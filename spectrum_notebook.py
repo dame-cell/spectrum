@@ -11,38 +11,16 @@ import re
 
 class ModelModifier:
     def __init__(self, model_name=None, top_percent=50, batch_size=1, model=None):
-        self.model_name = model_name
         self.top_percent = top_percent
         self.batch_size = batch_size
         self.layer_snr = {}
         self.layer_types = []
         
         if model is not None:
-            # If model is provided directly, use it
             self.model = model
-        elif model_name:
-            try:
-                self.model = AutoModelForCausalLM.from_pretrained(
-                    model_name, 
-                    torch_dtype=torch.float32, 
-                    low_cpu_mem_usage=True, 
-                    trust_remote_code=True, 
-                    device_map="auto"
-                )
-            except KeyError as e:
-                print(f"Error loading model: {e}")
-                print("Attempting to load with custom configuration...")
-                config = AutoConfig.from_pretrained(model_name)
-                config.rope_scaling = {"type": "linear", "factor": 1.0}
-                self.model = AutoModelForCausalLM.from_pretrained(
-                    model_name,
-                    config=config,
-                    torch_dtype=torch.float32,
-                    low_cpu_mem_usage=True,
-                    trust_remote_code=True,
-                    device_map="auto"
-                )
+            self.model_name = model.config._name_or_path
             
+            # Configure rope_scaling for the provided model
             if not hasattr(self.model.config, 'rope_scaling'):
                 self.model.config.rope_scaling = {'type': 'linear'}
             elif not isinstance(self.model.config.rope_scaling, dict):
@@ -51,10 +29,9 @@ class ModelModifier:
                 self.model.config.rope_scaling['type'] = 'linear'
         else:
             self.model = None
+            self.model_name = model_name
 
-        self.layer_snr = {}
-        self.layer_types = []
-
+   
     def get_weight_types(self):
         weight_types = set()
         for name, module in self.model.named_modules():
@@ -316,15 +293,7 @@ def get_spectrum(model, top_percent=50, batch_size=1, weight_to_snr=None):
         batch_size: Batch size for analysis
         weight_to_snr: List of weight types to analyze
     """
-    import copy
-    
-    # Get model name from config
-    model_name = model.config._name_or_path
-    modifier = ModelModifier(model_name=model_name, top_percent=top_percent, batch_size=batch_size)
-    
-    # Instead of creating a new model, use the existing one
-    modifier.model = model
-    
+    modifier = ModelModifier(model=model, top_percent=top_percent, batch_size=batch_size)    
     if weight_to_snr:
         modifier.assess_layers_snr(weight_to_snr)
         modifier.save_snr_to_json()
