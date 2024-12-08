@@ -298,6 +298,7 @@ def analyze_model(model_name, top_percent=50, batch_size=1, weight_to_snr=None):
             
     return modifier
 
+import re 
 def get_spectrum(model, top_percent=50, batch_size=1, weight_to_snr=None):
     """
     Analyze model and apply Spectrum freezing/unfreezing based on SNR analysis
