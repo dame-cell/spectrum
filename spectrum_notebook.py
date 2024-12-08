@@ -298,35 +298,33 @@ def analyze_model(model_name, top_percent=50, batch_size=1, weight_to_snr=None):
             
     return modifier
 
-import re
-def get_spectrum(model_or_name, top_percent=50, batch_size=1, weight_to_snr=None):
+def get_spectrum(model, top_percent=50, batch_size=1, weight_to_snr=None):
     """
     Analyze model and apply Spectrum freezing/unfreezing based on SNR analysis
     Returns the modified model with frozen/unfrozen parameters
     
     Args:
-        model_or_name: Either a string (model name) or a pre-loaded model object
+        model: The pre-loaded model object
         top_percent: Percentage of top SNR layers to unfreeze
         batch_size: Batch size for analysis
         weight_to_snr: List of weight types to analyze
     """
-    # Handle both model name (string) and model object
-    if isinstance(model_or_name, str):
-        model_name = model_or_name
-        modifier = analyze_model(model_name, top_percent, batch_size, weight_to_snr)
-        model = modifier.model
-    else:
-        model = model_or_name
-        model_name = model.config._name_or_path
-        modifier = ModelModifier(model_name=model_name, top_percent=top_percent, batch_size=batch_size)
-        modifier.model = model
-        if weight_to_snr:
-            modifier.assess_layers_snr(weight_to_snr)
-            modifier.save_snr_to_json()
+    # Get model name from config
+    model_name = model.config._name_or_path
+    modifier = ModelModifier(model_name=model_name, top_percent=top_percent, batch_size=batch_size)
+    modifier.model = model
+    
+    if weight_to_snr:
+        modifier.assess_layers_snr(weight_to_snr)
+        modifier.save_snr_to_json()
     
     # Get model name slug for file paths
     model_name_slug = model_name.replace('/', '-').replace('_', '-')
     yaml_file = f"snr_results_{model_name_slug}_unfrozenparameters_{top_percent}percent.yaml"
+    
+    # Print total parameters before freezing
+    total_params = sum(p.numel() for p in model.parameters())
+    print(f"\nTotal parameters in model: {total_params:,}")
     
     try:
         with open(yaml_file, "r") as fin:
@@ -343,12 +341,23 @@ def get_spectrum(model_or_name, top_percent=50, batch_size=1, weight_to_snr=None
             param.requires_grad = False
             
         # Unfreeze Spectrum parameters
+        unfrozen_count = 0
+        total_params = 0
         for name, param in model.named_parameters():
+            total_params += param.numel()
             if any(re.match(unfrozen_param, name) for unfrozen_param in unfrozen_parameters):
                 param.requires_grad = True
+                unfrozen_count += param.numel()
                 
-        print(f"Applied Spectrum: Froze all parameters and unfroze top {top_percent}% SNR layers")
-        
+        print(f"\nSpectrum Analysis Results:")
+        print(f"Total Parameters: {total_params:,}")
+        print(f"Frozen Parameters: {(total_params - unfrozen_count):,} ({100 * (total_params - unfrozen_count) / total_params:.2f}%)")
+        print(f"Unfrozen Parameters: {unfrozen_count:,} ({100 * unfrozen_count / total_params:.2f}%)")
+        print(f"\nUnfrozen layers based on top {top_percent}% SNR:")
+        for name, param in model.named_parameters():
+            if param.requires_grad:
+                print(f"- {name}: {param.numel():,} parameters")
+                
     except FileNotFoundError:
         print(f"Warning: YAML file {yaml_file} not found. Model parameters remain unchanged.")
     except Exception as e:
