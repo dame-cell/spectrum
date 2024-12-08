@@ -333,6 +333,8 @@ def get_spectrum(model, top_percent=50, batch_size=1, weight_to_snr=None):
         for name, param in model.named_parameters():
             if any(re.match(unfrozen_param, name) for unfrozen_param in unfrozen_parameters):
                 param.requires_grad = True
+                if param.dtype == torch.float16:
+                    param.register_hook(lambda grad: grad.float())
                 unfrozen_count += param.numel()
                 
         print(f"\nSpectrum Freezing Results:")
