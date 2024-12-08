@@ -78,51 +78,35 @@ class ModelModifier:
                 batch_layers = layers[i:i + self.batch_size]
                 for name, module in batch_layers:
                     try:
-                        # Move weights to CPU
-                        weights = module.weight.detach().cpu()
-                        
+                        # Keep computation on GPU but use efficient memory management
+                        weights = module.weight.detach()
                         if weights.ndim < 2:
                             weights = weights.unsqueeze(0)
-                        
-                        # Process large matrices in chunks
-                        if weights.numel() > 1e7:  # For matrices larger than 10M elements
-                            chunk_size = min(weights.shape[0], 1000)  # Process 1000 rows at a time
-                            S_list = []
                             
-                            for j in range(0, weights.shape[0], chunk_size):
-                                chunk = weights[j:j + chunk_size]
-                                S_chunk = torch.linalg.svdvals(chunk)
-                                S_list.append(S_chunk)
-                            
-                            S = torch.cat(S_list)
-                        else:
-                            S = torch.linalg.svdvals(weights)
+                        # Use torch.cuda.empty_cache() before heavy computation
+                        torch.cuda.empty_cache()
                         
+                        # Compute SVD values directly on GPU
+                        S = torch.linalg.svdvals(weights)
                         max_singular_value = S[0]
                         sigma_estimated = self.estimate_sigma_with_full_iqr(S)
                         n, m = weights.shape[-2:]
                         mp_threshold = self.marchenko_pastur_threshold(sigma_estimated, n, m)
-                        
-                        # Calculate signal and noise on CPU
                         signal = S[S > mp_threshold].sum()
                         noise = S[S <= mp_threshold].sum()
                         snr = signal / noise if noise != 0 else float('inf')
                         snr_ratio = snr / max_singular_value
-                        
                         self.layer_snr[name] = {'type': layer_type, 'snr': float(snr_ratio)}
                         
-                        # Clean up memory
-                        if 'S_list' in locals():
-                            del S_list
+                        # Clean up memory immediately
                         del weights, S
                         torch.cuda.empty_cache()
                         
                     except RuntimeError as e:
                         print(f"\nWarning: Error processing layer {name}: {str(e)}")
-                        print("Attempting to process with reduced precision...")
                         try:
-                            # Fallback to half precision
-                            weights = module.weight.detach().cpu().half()
+                            # Fallback to CPU only if GPU fails
+                            weights = module.weight.detach().cpu()
                             S = torch.linalg.svdvals(weights)
                             max_singular_value = S[0]
                             sigma_estimated = self.estimate_sigma_with_full_iqr(S)
@@ -137,7 +121,7 @@ class ModelModifier:
                             del weights, S
                             torch.cuda.empty_cache()
                         except Exception as e2:
-                            print(f"\nWarning: Could not process layer {name} even with reduced precision: {str(e2)}")
+                            print(f"\nWarning: Could not process layer {name} even with CPU fallback: {str(e2)}")
                             continue
                             
                 progress_bar.update(1)
