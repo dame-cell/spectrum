@@ -10,12 +10,17 @@ from IPython.display import display
 import re 
 
 class ModelModifier:
-    def __init__(self, model_name=None, top_percent=50, batch_size=1):
+    def __init__(self, model_name=None, top_percent=50, batch_size=1, model=None):
         self.model_name = model_name
         self.top_percent = top_percent
         self.batch_size = batch_size
+        self.layer_snr = {}
+        self.layer_types = []
         
-        if model_name:
+        if model is not None:
+            # If model is provided directly, use it
+            self.model = model
+        elif model_name:
             try:
                 self.model = AutoModelForCausalLM.from_pretrained(
                     model_name, 
