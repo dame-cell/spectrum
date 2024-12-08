@@ -77,19 +77,69 @@ class ModelModifier:
             for i in range(0, len(layers), self.batch_size):
                 batch_layers = layers[i:i + self.batch_size]
                 for name, module in batch_layers:
-                    weights = module.weight.detach()
-                    if weights.ndim < 2:
-                        weights = weights.unsqueeze(0)
-                    S = torch.linalg.svdvals(weights)
-                    max_singular_value = S[0]
-                    sigma_estimated = self.estimate_sigma_with_full_iqr(S)
-                    n, m = weights.shape[-2:]
-                    mp_threshold = self.marchenko_pastur_threshold(sigma_estimated, n, m)
-                    signal = S[S > mp_threshold].sum()
-                    noise = S[S <= mp_threshold].sum()
-                    snr = signal / noise if noise != 0 else float('inf')
-                    snr_ratio = snr / max_singular_value
-                    self.layer_snr[name] = {'type': layer_type, 'snr': snr_ratio.item()}
+                    try:
+                        # Move weights to CPU
+                        weights = module.weight.detach().cpu()
+                        
+                        if weights.ndim < 2:
+                            weights = weights.unsqueeze(0)
+                        
+                        # Process large matrices in chunks
+                        if weights.numel() > 1e7:  # For matrices larger than 10M elements
+                            chunk_size = min(weights.shape[0], 1000)  # Process 1000 rows at a time
+                            S_list = []
+                            
+                            for j in range(0, weights.shape[0], chunk_size):
+                                chunk = weights[j:j + chunk_size]
+                                S_chunk = torch.linalg.svdvals(chunk)
+                                S_list.append(S_chunk)
+                            
+                            S = torch.cat(S_list)
+                        else:
+                            S = torch.linalg.svdvals(weights)
+                        
+                        max_singular_value = S[0]
+                        sigma_estimated = self.estimate_sigma_with_full_iqr(S)
+                        n, m = weights.shape[-2:]
+                        mp_threshold = self.marchenko_pastur_threshold(sigma_estimated, n, m)
+                        
+                        # Calculate signal and noise on CPU
+                        signal = S[S > mp_threshold].sum()
+                        noise = S[S <= mp_threshold].sum()
+                        snr = signal / noise if noise != 0 else float('inf')
+                        snr_ratio = snr / max_singular_value
+                        
+                        self.layer_snr[name] = {'type': layer_type, 'snr': float(snr_ratio)}
+                        
+                        # Clean up memory
+                        if 'S_list' in locals():
+                            del S_list
+                        del weights, S
+                        torch.cuda.empty_cache()
+                        
+                    except RuntimeError as e:
+                        print(f"\nWarning: Error processing layer {name}: {str(e)}")
+                        print("Attempting to process with reduced precision...")
+                        try:
+                            # Fallback to half precision
+                            weights = module.weight.detach().cpu().half()
+                            S = torch.linalg.svdvals(weights)
+                            max_singular_value = S[0]
+                            sigma_estimated = self.estimate_sigma_with_full_iqr(S)
+                            n, m = weights.shape[-2:]
+                            mp_threshold = self.marchenko_pastur_threshold(sigma_estimated, n, m)
+                            signal = S[S > mp_threshold].sum()
+                            noise = S[S <= mp_threshold].sum()
+                            snr = signal / noise if noise != 0 else float('inf')
+                            snr_ratio = snr / max_singular_value
+                            self.layer_snr[name] = {'type': layer_type, 'snr': float(snr_ratio)}
+                            
+                            del weights, S
+                            torch.cuda.empty_cache()
+                        except Exception as e2:
+                            print(f"\nWarning: Could not process layer {name} even with reduced precision: {str(e2)}")
+                            continue
+                            
                 progress_bar.update(1)
 
     @staticmethod
@@ -219,7 +269,7 @@ class ModelModifier:
             print("Please install matplotlib and seaborn to visualize results")
 
 
-def analyze_model(model_name, top_percent=50, batch_size=32, weight_to_snr=None):
+def analyze_model(model_name, top_percent=50, batch_size=1, weight_to_snr=None):
     """
     Notebook-friendly function to analyze a model's SNR
     """
@@ -263,3 +313,4 @@ def analyze_model(model_name, top_percent=50, batch_size=32, weight_to_snr=None)
             print("No valid weight types selected. Please provide valid weight types.")
             
     return modifier
+
