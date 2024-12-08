@@ -297,20 +297,34 @@ def analyze_model(model_name, top_percent=50, batch_size=1, weight_to_snr=None):
             print("No valid weight types selected. Please provide valid weight types.")
             
     return modifier
-    
+
 import re
-def get_spectrum(model_name, top_percent=50, batch_size=1, weight_to_snr=None):
+def get_spectrum(model_or_name, top_percent=50, batch_size=1, weight_to_snr=None):
     """
     Analyze model and apply Spectrum freezing/unfreezing based on SNR analysis
     Returns the modified model with frozen/unfrozen parameters
+    
+    Args:
+        model_or_name: Either a string (model name) or a pre-loaded model object
+        top_percent: Percentage of top SNR layers to unfreeze
+        batch_size: Batch size for analysis
+        weight_to_snr: List of weight types to analyze
     """
-    # Run analysis
-    modifier = analyze_model(model_name, top_percent, batch_size, weight_to_snr)
+    # Handle both model name (string) and model object
+    if isinstance(model_or_name, str):
+        model_name = model_or_name
+        modifier = analyze_model(model_name, top_percent, batch_size, weight_to_snr)
+        model = modifier.model
+    else:
+        model = model_or_name
+        model_name = model.config._name_or_path
+        modifier = ModelModifier(model_name=model_name, top_percent=top_percent, batch_size=batch_size)
+        modifier.model = model
+        if weight_to_snr:
+            modifier.assess_layers_snr(weight_to_snr)
+            modifier.save_snr_to_json()
     
-    # Get the model from the modifier
-    model = modifier.model
-    
-    # Check if there is yaml file 
+    # Get model name slug for file paths
     model_name_slug = model_name.replace('/', '-').replace('_', '-')
     yaml_file = f"snr_results_{model_name_slug}_unfrozenparameters_{top_percent}percent.yaml"
     
