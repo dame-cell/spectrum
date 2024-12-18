@@ -213,34 +213,7 @@ class ModelModifier:
             json.dump(all_snr_layers, file, indent=4)
         print(f"All SNR layers sorted and saved to {filename}")
 
-    def visualize_snr_distribution(self):
-        """Visualize the SNR distribution of layers"""
-        try:
-            import matplotlib.pyplot as plt
-            import seaborn as sns
-            
-            # Prepare data for plotting
-            types_snr = {}
-            for layer_name, info in self.layer_snr.items():
-                layer_type = info['type']
-                if layer_type not in types_snr:
-                    types_snr[layer_type] = []
-                types_snr[layer_type].append(info['snr'])
-            
-            # Create plot
-            plt.figure(figsize=(12, 6))
-            for layer_type, snr_values in types_snr.items():
-                sns.kdeplot(data=snr_values, label=layer_type)
-            
-            plt.title('SNR Distribution by Layer Type')
-            plt.xlabel('SNR Ratio')
-            plt.ylabel('Density')
-            plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
-            plt.tight_layout()
-            plt.show()
-            
-        except ImportError:
-            print("Please install matplotlib and seaborn to visualize results")
+ 
 
 
 def analyze_model(model_name, top_percent=50, batch_size=1, weight_to_snr=None):
@@ -292,8 +265,7 @@ import re
 def get_spectrum(model, top_percent=50, batch_size=1, weight_to_snr=None):
     """
     Analyze model and apply Spectrum freezing/unfreezing based on SNR analysis
-    Returns the modified model with frozen/unfrozen parameters
-    
+   
     Args:
         model: The pre-loaded model object
         top_percent: Percentage of top SNR layers to unfreeze
@@ -309,42 +281,3 @@ def get_spectrum(model, top_percent=50, batch_size=1, weight_to_snr=None):
     model_name_slug = modifier.model_name.replace('/', '-').replace('_', '-')
     yaml_file = f"snr_results_{model_name_slug}_unfrozenparameters_{top_percent}percent.yaml"
     
-    # Print total parameters before freezing
-    total_params = sum(p.numel() for p in model.parameters())
-    print(f"\nModel Parameter Analysis:")
-    print(f"Total Parameters: {total_params:,}")
-    
-    try:
-        with open(yaml_file, "r") as fin:
-            yaml_parameters = fin.read()
-
-        # Extract unfrozen parameters
-        unfrozen_parameters = []
-        for line in yaml_parameters.splitlines():
-            if line.startswith("- "):
-                unfrozen_parameters.append(line.split("- ")[1])
-
-        # Freeze all parameters first
-        for param in model.parameters():
-            param.requires_grad = False
-            
-        # Unfreeze Spectrum parameters and count
-        unfrozen_count = 0
-        for name, param in model.named_parameters():
-            if any(re.match(unfrozen_param, name) for unfrozen_param in unfrozen_parameters):
-                param.requires_grad = True
-                unfrozen_count += param.numel()
-                
-        print(f"\nSpectrum Freezing Results:")
-        print(f"Total Parameters (unchanged): {total_params:,}")
-        print(f"├── Frozen (non-trainable): {(total_params - unfrozen_count):,} ({100 * (total_params - unfrozen_count) / total_params:.2f}%)")
-        print(f"└── Unfrozen (trainable): {unfrozen_count:,} ({100 * unfrozen_count / total_params:.2f}%)")
-        
-    
-                
-    except FileNotFoundError:
-        print(f"Warning: YAML file {yaml_file} not found. Model parameters remain unchanged.")
-    except Exception as e:
-        print(f"Warning: Error applying Spectrum: {str(e)}. Model parameters remain unchanged.")
-    
-    return model
